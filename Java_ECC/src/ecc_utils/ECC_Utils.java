@@ -10,79 +10,9 @@ public class ECC_Utils {
 			return P1;
 		Point nP = P1;
 		for (int x = 1; x < n; x++)
-			nP = addPoints(myCurve, nP, P1);
+			nP = nP.plus(P1, myCurve);
 		return nP;
 	} // end calculateP2
-
-	// TODO: add in if one point is point at infinity
-	public static Point addPoints(final EllipticCurve myCurve, final Point P1, final Point P2) {
-		if (myCurve == null || P1 == null || P2 == null)
-			throw new IllegalArgumentException("Curve or P1 or P2 is null");
-		double x1 = P1.getx();
-		double y1 = P1.gety();
-		double x2 = P2.getx();
-		double y2 = P2.gety();
-		double slope, m2, x3, y3;
-		if (!myCurve.isMod()) // no modulus
-		{
-
-			if (P1.equals(P2)) {
-				slope = (3 * Math.pow(x1, 2) + myCurve.getA()) / (2 * y1);
-				m2 = Math.pow(slope, 2);
-				x3 = m2 - 2 * x1;
-				y3 = -(slope * (x3 - x1) + y1);
-				return new Point(x3, y3, false);
-			}
-
-			else if (P1.isNegativeOf(P2)) // P1 = -P2
-			{
-				return new Point(0, 0, true); // say that result is point at infinity
-			} else // otherwise do normal point addition
-			{
-				slope = (y1 - y2) / (x1 - x2);
-				m2 = Math.pow(slope, 2);
-				x3 = m2 - x1 - x2;
-				y3 = -(slope * (x3 - x1) + y1);
-				return new Point(x3, y3, false);
-			}
-		} else // yes modulus
-		{
-			int p = myCurve.getP();
-
-			if (x1 == x2 && y1 == y2) // P1 = P2
-			{
-				slope = (((3 * x1 * x1) + myCurve.getA()) * findInverseModP(2 * (int)y1, p)) % p;
-				if(slope < 0) // ensure values are positive
-					slope += p;
-				m2 = (slope * slope) % p;
-				x3 = (m2 - 2 * x1) % p;
-				y3 = -(slope * (x3 - x1) + y1) % p;
-				if(x3<0) // ensure values are positive
-					x3 += p;
-				else if(y3<0)
-					y3 += p;
-				return new Point(x3, y3, false);
-			}
-
-			else if (P1.isNegativeOf(P2)) // P1 = -P2
-			{
-				return new Point(0, 0, true); // point at infinity
-			} else // otherwise do normal point addition
-			{
-				slope = makePosModP((int)(y1 - y2),p) * findInverseModP(makePosModP((int)(x1-x2),p), p) % p;
-				slope = makePosModP((int)slope, p);
-				m2 = (int)(slope * slope) % p;
-				x3 = makePosModP((int)(m2 - x1 - x2),p) % p;
-				y3 = makePosModP(-(int)(slope * (x3 - x1) + y1),p) % p;
-				System.out.println("x3 is: " + x3 + " y3 is: " + y3);
-				if(x3 < 0) // ensure values are positive
-					x3 += p;
-				if(y3 < 0)
-					y3 += p;
-				return new Point(x3, y3, false);
-			}
-		}
-	} // end addPoints
 
 	public static int findInverseModP(final int num, final int p) {
 		int a = num % p;
@@ -92,52 +22,147 @@ public class ECC_Utils {
 		return 1;
 	}
 	// This code is contributed by Nikita Tiwari.
-	// Found at: https://www.geeksforgeeks.org/multiplicative-inverse-under-modulo-m/
-	
+	// Found at:
+	// https://www.geeksforgeeks.org/multiplicative-inverse-under-modulo-m/
+
+	public static int findSqrtModP(final int num, final int p) {
+		int a = num % p;
+		for (int i = 0; i < p; i++) {
+			if (i * i == a)
+				return i;
+		}
+		return 0;
+	} // end findSqrtModP
+
 	public static int makePosModP(final int num, final int p) {
 		int a = num % p;
-		if(a < 0)
+		if (a < 0)
 			return a += p;
 		else
 			return a;
-	} //end makePosModP
-	
+	} // end makePosModP
+
 	public static int findCurveOrder(final EllipticCurve myCurve) {
-		int i = 0;
-		for(int x = 0; x < myCurve.getP(); x++)
-			if(Math.sqrt(Math.pow(x, 3)-myCurve.getA()*x+myCurve.getB()) % 1 == 0) // y^2 = sqrt(x^3 + Ax + B)
-				i ++;
-		return 2*i; // count points y>0 and y<0
+		int distinctPoints = 0;
+		int order = 0;
+		Point[] pointArray = new Point[myCurve.getP()];
+
+		// put all possible points in pointArray
+		for (int x = 0; x < pointArray.length; x++) {
+			Point temp = new Point(x, Math.sqrt(Math.pow(x, 3) - myCurve.getA() * x + myCurve.getB()), false)
+					.reduceModp(myCurve.getP());
+			if (myCurve.hasPoint(temp)) // y = sqrt(x^3 + Ax + B)
+				pointArray[x] = temp;
+		}
+
+		// if point was already recorded, set that array element to null
+		for (int j = 0; j < pointArray.length; j++) {
+			if (arrayContains(pointArray, j, pointArray[j]))
+				pointArray[j] = null;
+		}
+
+		// count all non null points
+		for (int j = 0; j < pointArray.length; j++) {
+			if (pointArray[j] == null) {
+			} else
+				distinctPoints++;
+		}
+
+		order = 2 * distinctPoints;
+		myCurve.setOrder(order);
+		return order; // count points y>0 and y<0
 	} // end findCurveOrder
 
-	public static int findPointOrder(final EllipticCurve myCurve, final Point pt) {
+	public static boolean arrayContains(final Point[] pointArray, final int upTo, final Point thisPoint) {
+		for (int i = 0; i < upTo; i++) {
+			if (pointArray[i] == thisPoint)
+				return true;
+		}
+		return false;
+	} // end arrayContains
+
+	public static int findPointOrder(final EllipticCurve myCurve, final Point generator) {
+		int curveOrder = myCurve.getOrder();
+		int[] divisors = new int[myCurve.getP()];
+		Point temp = null;
+
+		// find all divisors of group order
+		divisors[0] = 0;
+		for (int i = 1; i < divisors.length; i++) {
+			if (curveOrder % i == 0)
+				divisors[i] = i;
+			else
+				divisors[i] = 0;
+		}
+
+		// find smallest value that is order of subgroup
+		for (int i = 0; i < divisors.length; i++) {
+			if (divisors[i] != 0) {
+				temp = calculateNP(myCurve, generator, divisors[i]);
+				if (temp.isPointAtInfinity())
+					return divisors[i];
+			}
+		}
+
+		return 0;
+	} // end findPointOrder
+/*
+	public static Point[] generateSubgroup(final EllipticCurve myCurve, final Point generator) {
+		Point Pout = generator;
+		Point[] firstArray = new Point[myCurve.getP()];
+		Point[] secondArray = new Point[myCurve.getP()];
 		int i = 0;
-		Point Pout = pt;
-		while(!Pout.isPointAtInfinity() && i < myCurve.getP()) {
-			Pout = addPoints(myCurve, Pout, pt);
+		boolean contain = false;
+		int last = 0;
+		System.out.print("Subgroup generated by " + "(" + (int) Pout.getx() + ", " + (int) Pout.gety() + ") " + "is: ");
+
+		// get all possible points generated by generator
+		while (!Pout.isPointAtInfinity() && i < firstArray.length) {
+			Pout = Pout.plus(generator, myCurve);
+			firstArray[i] = Pout;
 			i++;
 		}
-		return i;
-	} // end findPointOrder
+
+		// ensure no repeats
+		for (int j = 0; j < myCurve.getP(); j++) {
+			contain = false;
+
+			// search to find if current place in firstArray already is in secondArray
+			if(SearchUtils.linearSearch(secondArray, firstArray[j]) == -1) // TODO: FInish this
+			//for (int k = 0; k < last; k++) {
+				//if (firstArray[j].equals(secondArray[k]))
+				
+					contain = true;
+			}
+
+			if (!contain) {
+				secondArray[last] = firstArray[j];
+				last++;
+			}
+
+			j++;
+		}
+
+		for (int m = 0; m < last - 1; m++) {
+			System.out.print("(" + (int) secondArray[m].getx() + ", " + (int) secondArray[m].gety() + ") ");
+		}
+
+		System.out.println();
+		System.out.println("With repeats: ");
+		for (Point point : firstArray) {
+			System.out.print("(" + (int) point.getx() + ", " + (int) point.gety() + ") ");
+		}
+		return secondArray;
+	} // end generateSubgroup
+	*/
 	
+	public static void printArray(final Point [] array) {
+		for(Point p: array) {
+			if(p != null)
+				System.out.print("(" + (int) p.getx() + ", " + (int) p.gety() + ")");
+		}
+		System.out.println();
+		System.out.println();
+	} // end printArray
+
 } // end class
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
